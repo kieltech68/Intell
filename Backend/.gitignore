@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+.venv/
+
+# Elasticsearch
+/data/
+/logs/
+
+# Android
+build/
+.gradle/
+.idea/
+
+# Environment files
+.env
+.env.*
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

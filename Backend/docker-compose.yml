@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: elasticsearch:8.12.0
+    environment:
+      - node.name=es01
+      - discovery.type=single-node
+      - "xpack.security.enabled=true"
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL","/bin/sh -c 'if [ -n \"${ELASTIC_PASSWORD}\" ]; then curl -sS -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1; else curl -sS http://localhost:9200 || exit 1; fi'"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  web:
+    build: .
+    depends_on:
+      - elasticsearch
+    links:
+      - elasticsearch
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    command: ["uvicorn","app:app","--host","0.0.0.0","--port","8000"]
+
+volumes:
+  esdata:
+    driver: local

@@ -1,0 +1,7 @@
+elasticsearch
+beautifulsoup4
+fastapi
+uvicorn
+requests
+PyPDF2
+httpx
