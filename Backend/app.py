@@ -81,10 +81,28 @@ def is_safe_content(content: str) -> bool:
 
 # Elasticsearch connection parameters (read from environment for flexibility)
 # Railway/DigitalOcean/Docker friendly defaults: ES_HOST defaults to Docker service name
-ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
+ES_HOST = os.getenv("ES_HOST", "elasticsearch:9200")
 ES_USERNAME = os.getenv("ELASTIC_USER", os.getenv("ES_USERNAME", "elastic"))
 ES_PASSWORD = os.getenv("ELASTIC_PASSWORD", os.getenv("ES_PASSWORD", "qmQWhkpwYGY25fFc*-_3"))
 ES_INDEX = os.getenv("ES_INDEX", "my_web_pages")
+
+# Normalize ES_HOST: ensure scheme (http://) and port (:9200) are present
+from urllib.parse import urlparse, urlunparse
+try:
+    raw_host = ES_HOST
+    # Prepend '//' when scheme is missing so urlparse puts host in netloc
+    parsed = urlparse(raw_host if '://' in raw_host else f'//{raw_host}', scheme='http')
+    scheme = parsed.scheme or 'http'
+    netloc = parsed.netloc or parsed.path
+    # Append default port if none provided
+    if ':' not in netloc:
+        netloc = f"{netloc}:9200"
+    ES_HOST = urlunparse((scheme, netloc, '', '', '', ''))
+    print(f"Elasticsearch host set to: {ES_HOST}")
+except Exception as e:
+    print(f"Error parsing ES_HOST ('{ES_HOST}'): {e}")
+    ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
+    print(f"Falling back to ES_HOST={ES_HOST}")
 
 # Initialize Elasticsearch client
 es = Elasticsearch(
