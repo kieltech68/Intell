@@ -1,30 +1,32 @@
 # Multi-stage Dockerfile for FastAPI app
 
-# Builder stage: build wheels to speed up final image
+# Builder stage
 FROM python:3.11-slim AS builder
 WORKDIR /app
-COPY requirements.txt ./
+# Fix: Tell Docker the file is inside the Backend folder
+COPY Backend/requirements.txt ./
 RUN python -m pip install --upgrade pip setuptools wheel && \
-    python -m pip wheel --wheel-dir /wheels -r requirements.txt
+    python -m pip wheel --wheel-dir /wheels -r Backend/requirements.txt
 
 # Final stage
 FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 
-# Install from wheels produced in builder stage
+# Install from wheels
 COPY --from=builder /wheels /wheels
-COPY requirements.txt ./
+# Fix: Tell Docker the file is inside the Backend folder
+COPY Backend/requirements.txt ./
 RUN python -m pip install --no-index --find-links=/wheels -r requirements.txt
 
-# Copy application code
-COPY . /app
+# Copy application code from the Backend folder to the container's /app
+COPY Backend/ /app
 
 # Expose app port
 EXPOSE 8000
 
-# Environment variables (can be overridden by docker-compose or env file)
-ENV ES_HOST=${ES_HOST:-https://elasticsearch:9200}
+# Environment variables
+ENV ES_HOST=${ES_HOST:-http://elasticsearch:9200}
 ENV ES_USERNAME=${ES_USERNAME:-elastic}
 ENV ES_PASSWORD=${ES_PASSWORD:-changeme}
 
