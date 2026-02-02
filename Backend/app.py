@@ -412,13 +412,19 @@ def health():
     """Health check endpoint."""
     try:
         if es.ping():
-            return {"status": "healthy", "elasticsearch": "connected"}
+            return {
+                "status": "healthy",
+                "elasticsearch": "connected",
+            }
         else:
-            return {"status": "unhealthy", "elasticsearch": "disconnected"}
+            return {
+                "status": "unhealthy",
+                "elasticsearch": "disconnected",
+            }
     except Exception as e:
         return {
             "status": "unhealthy",
-            "error": str(e)
+            "error": str(e),
         }
 
 
@@ -446,20 +452,20 @@ async def index_page(request: dict, x_api_key: Optional[str] = Header(None)):
     api_key = os.getenv("API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Server misconfiguration: API_KEY not set")
+
     # Accept header as either 'x-api-key' in dict (FastAPI Header binding) or directly from request
     if x_api_key is None:
         # FastAPI didn't bind header (older style), try retrieving from environment or raw headers
-        from fastapi import Request
-        # If request is a dict fallback, we can't access headers here; enforce header usage
         raise HTTPException(status_code=401, detail="Missing API key header 'x-api-key'")
+
     if x_api_key != api_key:
         raise HTTPException(status_code=401, detail="Unauthorized: invalid API key")
 
     # Validate payload
     payload = request
-    url = payload.get('url')
-    content = payload.get('content', '')
-    title = payload.get('title', url or 'No title')
+    url = payload.get("url")
+    content = payload.get("content", "")
+    title = payload.get("title", url or "No title")
     if not url:
         raise HTTPException(status_code=400, detail="Missing required field: url")
 
@@ -467,17 +473,23 @@ async def index_page(request: dict, x_api_key: Optional[str] = Header(None)):
         "url": url,
         "title": title,
         "content": content,
-        "favicon_url": payload.get('favicon_url', ''),
-        "preview_image_url": payload.get('preview_image_url', ''),
-        "images": payload.get('images', []),
-        "file_type": payload.get('file_type', 'html'),
+        "favicon_url": payload.get("favicon_url", ""),
+        "preview_image_url": payload.get("preview_image_url", ""),
+        "images": payload.get("images", []),
+        "file_type": payload.get("file_type", "html"),
         "is_safe": is_safe_content(content),
-        "timestamp": time.time()
+        "timestamp": time.time(),
     }
 
     try:
         res = es.index(index=ES_INDEX, document=doc)
-        return JSONResponse(status_code=201, content={"result": "indexed", "id": res.get('_id') if isinstance(res, dict) else None})
+        return JSONResponse(
+            status_code=201,
+            content={
+                "result": "indexed",
+                "id": res.get("_id") if isinstance(res, dict) else None,
+            },
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to index document: {e}")
 
