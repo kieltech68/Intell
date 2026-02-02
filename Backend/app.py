@@ -480,9 +480,6 @@ async def index_page(request: dict, x_api_key: Optional[str] = Header(None)):
         return JSONResponse(status_code=201, content={"result": "indexed", "id": res.get('_id') if isinstance(res, dict) else None})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to index document: {e}")
-            "elasticsearch": "error",
-            "error": str(e)
-        }
 
 if __name__ == "__main__":
     import uvicorn
