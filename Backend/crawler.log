@@ -1,0 +1,71 @@
+2026-02-02 13:52:27,576 INFO ======================================================================
+2026-02-02 13:52:27,578 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 13:52:27,579 INFO ======================================================================
+2026-02-02 13:52:27,580 INFO Target Index: my_web_pages
+2026-02-02 13:52:27,580 INFO Elasticsearch: https://intell-production.up.railway.app
+2026-02-02 13:52:27,581 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 13:55:02,339 INFO ======================================================================
+2026-02-02 13:55:02,339 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 13:55:02,339 INFO ======================================================================
+2026-02-02 13:55:02,340 INFO Target Index: my_web_pages
+2026-02-02 13:55:02,340 INFO Elasticsearch: https://intell-production.up.railway.app:9200
+2026-02-02 13:55:02,341 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 13:59:26,036 INFO ======================================================================
+2026-02-02 13:59:26,040 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 13:59:26,053 INFO ======================================================================
+2026-02-02 13:59:26,116 INFO Target Index: my_web_pages
+2026-02-02 13:59:26,118 INFO Elasticsearch: https://intell-production.up.railway.app:9200
+2026-02-02 13:59:26,153 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 13:59:37,745 ERROR [!] Failed to connect to Elasticsearch
+2026-02-02 13:59:56,761 INFO ======================================================================
+2026-02-02 13:59:56,762 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 13:59:56,763 INFO ======================================================================
+2026-02-02 13:59:56,763 INFO Target Index: my_web_pages
+2026-02-02 13:59:56,764 INFO Elasticsearch: https://intell-production.up.railway.app:9200
+2026-02-02 13:59:56,765 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 14:00:06,791 ERROR [!] Failed to connect to Elasticsearch
+2026-02-02 14:00:30,322 INFO ======================================================================
+2026-02-02 14:00:30,323 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 14:00:30,323 INFO ======================================================================
+2026-02-02 14:00:30,324 INFO Target Index: my_web_pages
+2026-02-02 14:00:30,325 INFO Elasticsearch: https://intell-production.up.railway.app:9200
+2026-02-02 14:00:30,325 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 14:00:30,326 INFO Pinging Elasticsearch...
+2026-02-02 14:00:41,820 INFO ES ping result: False
+2026-02-02 14:00:41,820 ERROR [!] Failed to connect to Elasticsearch
+2026-02-02 14:01:24,986 INFO ======================================================================
+2026-02-02 14:01:24,988 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 14:01:24,989 INFO ======================================================================
+2026-02-02 14:01:24,992 INFO Target Index: my_web_pages
+2026-02-02 14:01:24,992 INFO Elasticsearch: https://intell-production.up.railway.app:9200
+2026-02-02 14:01:24,996 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 14:01:25,004 INFO Pinging Elasticsearch...
+2026-02-02 14:01:35,406 INFO ES ping result: False
+2026-02-02 14:01:35,406 ERROR [!] Failed to connect to Elasticsearch
+2026-02-02 14:05:58,260 INFO ======================================================================
+2026-02-02 14:05:58,261 INFO Recursive Web Crawler - Elasticsearch Indexer
+2026-02-02 14:05:58,262 INFO ======================================================================
+2026-02-02 14:05:58,262 INFO Target Index: my_web_pages
+2026-02-02 14:05:58,264 INFO Elasticsearch: https://intell-production.up.railway.app:9200
+2026-02-02 14:05:58,265 INFO Max Depth: 2, Max Pages: 300
+
+2026-02-02 14:05:58,266 INFO Pinging Elasticsearch...
+2026-02-02 14:06:10,296 INFO ES ping result: False
+2026-02-02 14:06:10,296 INFO [~] Elasticsearch not reachable; will POST documents to INDEX_ENDPOINT instead
+2026-02-02 14:06:10,299 INFO Starting recursive crawl with 5 seed URL(s):
+
+2026-02-02 14:06:10,299 INFO [Depth 0] [1/300] Crawling: https://www.python.org
+2026-02-02 14:06:23,470 ERROR [!] Failed to index via API: https://www.python.org - 404 {"detail":"Not Found"}
+2026-02-02 14:06:24,520 INFO [Depth 0] [2/300] Crawling: https://www.wikipedia.org
+2026-02-02 14:06:41,499 ERROR [!] Failed to index via API: https://www.wikipedia.org - 404 {"detail":"Not Found"}
+2026-02-02 14:06:42,503 INFO [Depth 0] [3/300] Crawling: https://www.github.com
+2026-02-02 14:07:07,904 ERROR [!] Failed to index via API: https://www.github.com - 404 {"detail":"Not Found"}
+2026-02-02 14:07:08,907 INFO [Depth 0] [4/300] Crawling: https://www.stackoverflow.com
+2026-02-02 14:07:18,543 WARNING [!] Request error: HTTPError
+2026-02-02 14:07:19,545 INFO [Depth 0] [5/300] Crawling: https://www.rust-lang.org

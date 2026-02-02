@@ -24,10 +24,15 @@ PROFANITY_LIST = {
 # Elasticsearch connection parameters
 import os
 # Elasticsearch connection parameters (read from environment for flexibility)
-ES_HOST = os.getenv("ES_HOST", "https://localhost:9200")
-ES_USERNAME = os.getenv("ELASTIC_USER", os.getenv("ES_USERNAME", "elastic"))
-ES_PASSWORD = os.getenv("ELASTIC_PASSWORD", os.getenv("ES_PASSWORD", "qmQWhkpwYGY25fFc*-_3"))
+# Default points to your Railway domain; include :9200 if Elastic is exposed on that port
+ES_HOST = os.getenv("ES_HOST", "https://intell-production.up.railway.app:9200")
+ES_USERNAME = os.getenv("ES_USERNAME")
+ES_PASSWORD = os.getenv("ES_PASSWORD")
 ES_INDEX = os.getenv("ES_INDEX", "my_web_pages")
+# Endpoint to POST indexed documents to (FastAPI running on Railway)
+INDEX_ENDPOINT = os.getenv("INDEX_ENDPOINT", "https://intell-production.up.railway.app/index-page")
+# API key expected by the FastAPI /index-page endpoint (set this in Railway env vars)
+API_KEY = os.getenv("API_KEY")
 
 # Crawler configuration
 MAX_DEPTH = 2
@@ -38,13 +43,32 @@ REQUEST_TIMEOUT = (5, 10)  # (connect_timeout, read_timeout)
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+import logging
+# Setup logging to file and console for tailing and monitoring
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+fh = logging.FileHandler('crawler.log')
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+sh = logging.StreamHandler()
+sh.setFormatter(formatter)
+logger.addHandler(sh)
+
 # Initialize Elasticsearch client
-es = Elasticsearch(
-    hosts=[ES_HOST],
-    basic_auth=(ES_USERNAME, ES_PASSWORD),
-    verify_certs=False,
-    ssl_show_warn=False
-)
+# If your cloud ES requires authentication, set ES_USERNAME and ES_PASSWORD as environment variables.
+# If you prefer the older http_auth style, you can uncomment the example below:
+# es = Elasticsearch(hosts=[ES_HOST], http_auth=('elastic', 'your_password'), verify_certs=False)
+es_kwargs = {
+    "hosts": [ES_HOST],
+    "verify_certs": False,  # Set to False for self-signed certs (Railway)
+    "ssl_show_warn": False,
+}
+if ES_USERNAME and ES_PASSWORD:
+    # Newer clients use basic_auth; this will apply when credentials are provided
+    es_kwargs["basic_auth"] = (ES_USERNAME, ES_PASSWORD)
+
+es = Elasticsearch(**es_kwargs)
 
 # Seed URLs to crawl
 SEED_URLS = [
@@ -179,8 +203,18 @@ def crawl_and_index(url, session):
                     "timestamp": time.time()
                 }
                 
-                es.index(index=ES_INDEX, document=doc)
-                print("[+] Indexed (PDF)")
+                try:
+                    headers = {"x-api-key": API_KEY} if API_KEY else {}
+                    try:
+                        resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
+                        if resp.status_code in (200, 201):
+                            logger.info(f"[+] Indexed (PDF) via API: {url} -> {resp.status_code}")
+                        else:
+                            logger.error(f"[!] Failed to index (PDF) via API: {url} - {resp.status_code} {resp.text}")
+                            return False, set()
+                    except requests.exceptions.RequestException as re:
+                        logger.warning(f"[!] Request error indexing (PDF): {url} - {re}")
+                        return False, set()
                 return True, set()
         
         # Fetch the page for HTML content
@@ -244,24 +278,36 @@ def crawl_and_index(url, session):
         }
         
         # Index the document
-        es.index(index=ES_INDEX, document=doc)
-        print("[+] Indexed")
-        
+        try:
+                headers = {"x-api-key": API_KEY} if API_KEY else {}
+                try:
+                    resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
+                    if resp.status_code in (200, 201):
+                        logger.info(f"[+] Indexed via API: {url} -> {resp.status_code}")
+                    else:
+                        logger.error(f"[!] Failed to index via API: {url} - {resp.status_code} {resp.text}")
+                        return False, set()
+                except requests.exceptions.RequestException as re:
+                    logger.warning(f"[!] Request error indexing: {url} - {re}")
+                    return False, set()
+            except Exception as e:
+                logger.error(f"[!] Failed to index via API: {url} - {e}")
+                return False, set()
         # Extract internal links
         links = extract_links(url, response.content)
         return True, links
         
     except requests.exceptions.Timeout:
-        print("[!] Timeout")
+        logger.warning("[!] Timeout")
         return False, set()
     except requests.exceptions.ConnectionError:
-        print("[!] Connection error")
+        logger.warning("[!] Connection error")
         return False, set()
     except requests.exceptions.RequestException as e:
-        print(f"[!] Request error: {type(e).__name__}")
+        logger.warning(f"[!] Request error: {type(e).__name__}")
         return False, set()
     except Exception as e:
-        print(f"[!] Error: {type(e).__name__}")
+        logger.error(f"[!] Error: {type(e).__name__}")
         return False, set()
 
 def recursive_crawl():
@@ -269,21 +315,32 @@ def recursive_crawl():
     Perform recursive crawl using BFS (breadth-first search).
     Respects max_depth and max_pages limits.
     """
-    print("=" * 70)
-    print("Recursive Web Crawler - Elasticsearch Indexer")
-    print("=" * 70)
-    print(f"Target Index: {ES_INDEX}")
-    print(f"Elasticsearch: {ES_HOST}")
-    print(f"Max Depth: {MAX_DEPTH}, Max Pages: {MAX_PAGES}\n")
+    logger.info("=" * 70)
+    logger.info("Recursive Web Crawler - Elasticsearch Indexer")
+    logger.info("=" * 70)
+    logger.info(f"Target Index: {ES_INDEX}")
+    logger.info(f"Elasticsearch: {ES_HOST}")
+    logger.info(f"Max Depth: {MAX_DEPTH}, Max Pages: {MAX_PAGES}\n")
     
     # Verify Elasticsearch connection
     try:
-        if not es.ping():
-            print("[!] Failed to connect to Elasticsearch")
-            return
-        print("[+] Connected to Elasticsearch\n")
+        logger.info("Pinging Elasticsearch...")
+        ping_result = False
+        try:
+                ping_result = es.ping()
+            logger.info(f"ES ping result: {ping_result}")
+        except Exception as ping_exc:
+            logger.warning(f"ES ping attempt failed: {ping_exc}")
+        if not ping_result:
+            if INDEX_ENDPOINT:
+                logger.info("[~] Elasticsearch not reachable; will POST documents to INDEX_ENDPOINT instead")
+            else:
+                logger.error("[!] Failed to connect to Elasticsearch and no INDEX_ENDPOINT configured")
+                return
+        else:
+            logger.info("[+] Connected to Elasticsearch\n")
     except Exception as e:
-        print(f"[!] Elasticsearch connection error: {e}")
+        logger.error(f"[!] Elasticsearch connection error: {e}")
         return
     
     # Initialize crawl state
@@ -297,7 +354,7 @@ def recursive_crawl():
     for url in SEED_URLS:
         queue.append((url, 0))
     
-    print(f"Starting recursive crawl with {len(SEED_URLS)} seed URL(s):\n")
+    logger.info(f"Starting recursive crawl with {len(SEED_URLS)} seed URL(s):\n")
     
     # BFS crawl loop
     while queue and len(visited_urls) < MAX_PAGES:
@@ -311,10 +368,10 @@ def recursive_crawl():
         
         # Skip if beyond max depth
         if depth > MAX_DEPTH:
-            print(f"Skipping (depth={depth}): {url}")
+            logger.info(f"Skipping (depth={depth}): {url}")
             continue
         
-        print(f"[Depth {depth}] [{len(visited_urls)}/{MAX_PAGES}]")
+        logger.info(f"[Depth {depth}] [{len(visited_urls)}/{MAX_PAGES}] Crawling: {url}")
         
         # Crawl and index the page
         success, links = crawl_and_index(url, session)
@@ -329,16 +386,16 @@ def recursive_crawl():
         else:
             failed += 1
         
-        time.sleep(1)  # Be respectful with requests
+        time.sleep(1)  # Be respectful with requests and avoid Railway CPU limits
     
     # Print summary
-    print("\n" + "=" * 70)
-    print(f"Crawl Summary:")
-    print(f"  Total pages visited: {len(visited_urls)}")
-    print(f"  Successful: {successful}")
-    print(f"  Failed: {failed}")
-    print(f"  Queue remaining: {len(queue)}")
-    print("=" * 70)
+    logger.info("\n" + "=" * 70)
+    logger.info(f"Crawl Summary:")
+    logger.info(f"  Total pages visited: {len(visited_urls)}")
+    logger.info(f"  Successful: {successful}")
+    logger.info(f"  Failed: {failed}")
+    logger.info(f"  Queue remaining: {len(queue)}")
+    logger.info("=" * 70)
     
     # Check index stats
     try:

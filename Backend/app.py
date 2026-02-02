@@ -2,7 +2,7 @@
 FastAPI application for searching indexed web pages in Elasticsearch.
 """
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Header
 from fastapi.responses import JSONResponse
 from elasticsearch import Elasticsearch
 from typing import List, Optional
@@ -418,6 +418,68 @@ def health():
     except Exception as e:
         return {
             "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+@app.post("/index-page")
+async def index_page(request: dict, x_api_key: Optional[str] = Header(None)):
+    """Index a single page via POST request from a trusted crawler.
+
+    Security: Add an environment variable `API_KEY` and set it in your crawler headers
+    as `x-api-key` to authorize indexing.
+
+    Example payload (JSON):
+    {
+      "url": "https://example.com/page.html",
+      "title": "Example Page",
+      "content": "Full text content...",
+      "favicon_url": "",
+      "preview_image_url": "",
+      "images": [],
+      "file_type": "html"
+    }
+
+    Returns 201 on success with the indexed document id.
+    """
+    # Simple API key check
+    api_key = os.getenv("API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Server misconfiguration: API_KEY not set")
+    # Accept header as either 'x-api-key' in dict (FastAPI Header binding) or directly from request
+    if x_api_key is None:
+        # FastAPI didn't bind header (older style), try retrieving from environment or raw headers
+        from fastapi import Request
+        # If request is a dict fallback, we can't access headers here; enforce header usage
+        raise HTTPException(status_code=401, detail="Missing API key header 'x-api-key'")
+    if x_api_key != api_key:
+        raise HTTPException(status_code=401, detail="Unauthorized: invalid API key")
+
+    # Validate payload
+    payload = request
+    url = payload.get('url')
+    content = payload.get('content', '')
+    title = payload.get('title', url or 'No title')
+    if not url:
+        raise HTTPException(status_code=400, detail="Missing required field: url")
+
+    doc = {
+        "url": url,
+        "title": title,
+        "content": content,
+        "favicon_url": payload.get('favicon_url', ''),
+        "preview_image_url": payload.get('preview_image_url', ''),
+        "images": payload.get('images', []),
+        "file_type": payload.get('file_type', 'html'),
+        "is_safe": is_safe_content(content),
+        "timestamp": time.time()
+    }
+
+    try:
+        res = es.index(index=ES_INDEX, document=doc)
+        return JSONResponse(status_code=201, content={"result": "indexed", "id": res.get('_id') if isinstance(res, dict) else None})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to index document: {e}")
             "elasticsearch": "error",
             "error": str(e)
         }
