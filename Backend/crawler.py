@@ -205,16 +205,15 @@ def crawl_and_index(url, session):
                 
                 try:
                     headers = {"x-api-key": API_KEY} if API_KEY else {}
-                    try:
-                        resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
-                        if resp.status_code in (200, 201):
-                            logger.info(f"[+] Indexed (PDF) via API: {url} -> {resp.status_code}")
-                        else:
-                            logger.error(f"[!] Failed to index (PDF) via API: {url} - {resp.status_code} {resp.text}")
-                            return False, set()
-                    except requests.exceptions.RequestException as re:
-                        logger.warning(f"[!] Request error indexing (PDF): {url} - {re}")
+                    resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
+                    if resp.status_code in (200, 201):
+                        logger.info(f"[+] Indexed (PDF) via API: {url} -> {resp.status_code}")
+                    else:
+                        logger.error(f"[!] Failed to index (PDF) via API: {url} - {resp.status_code} {resp.text}")
                         return False, set()
+                except requests.exceptions.RequestException as re:
+                    logger.warning(f"[!] Request error indexing (PDF): {url} - {re}")
+                    return False, set()
                 return True, set()
         
         # Fetch the page for HTML content
@@ -278,21 +277,20 @@ def crawl_and_index(url, session):
         }
         
         # Index the document
+        headers = {"x-api-key": API_KEY} if API_KEY else {}
         try:
-                headers = {"x-api-key": API_KEY} if API_KEY else {}
-                try:
-                    resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
-                    if resp.status_code in (200, 201):
-                        logger.info(f"[+] Indexed via API: {url} -> {resp.status_code}")
-                    else:
-                        logger.error(f"[!] Failed to index via API: {url} - {resp.status_code} {resp.text}")
-                        return False, set()
-                except requests.exceptions.RequestException as re:
-                    logger.warning(f"[!] Request error indexing: {url} - {re}")
-                    return False, set()
-            except Exception as e:
-                logger.error(f"[!] Failed to index via API: {url} - {e}")
+            resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
+            if resp.status_code in (200, 201):
+                logger.info(f"[+] Indexed via API: {url} -> {resp.status_code}")
+            else:
+                logger.error(f"[!] Failed to index via API: {url} - {resp.status_code} {resp.text}")
                 return False, set()
+        except requests.exceptions.RequestException as re:
+            logger.warning(f"[!] Request error indexing: {url} - {re}")
+            return False, set()
+        except Exception as e:
+            logger.error(f"[!] Failed to index via API: {url} - {e}")
+            return False, set()
         # Extract internal links
         links = extract_links(url, response.content)
         return True, links
@@ -327,7 +325,7 @@ def recursive_crawl():
         logger.info("Pinging Elasticsearch...")
         ping_result = False
         try:
-                ping_result = es.ping()
+            ping_result = es.ping()
             logger.info(f"ES ping result: {ping_result}")
         except Exception as ping_exc:
             logger.warning(f"ES ping attempt failed: {ping_exc}")
