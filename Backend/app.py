@@ -80,37 +80,72 @@ def is_safe_content(content: str) -> bool:
     return True
 
 # Elasticsearch connection parameters (read from environment for flexibility)
-# Railway/DigitalOcean/Docker friendly defaults: ES_HOST defaults to Docker service name
-ES_HOST = os.getenv("ES_HOST", "elasticsearch:9200")
+# Default to environment-provided host; support Bonsai-style URLs with embedded creds.
+ES_RAW_HOST = os.getenv("ES_HOST", "elasticsearch:9200")
 ES_USERNAME = os.getenv("ELASTIC_USER", os.getenv("ES_USERNAME", "elastic"))
 ES_PASSWORD = os.getenv("ELASTIC_PASSWORD", os.getenv("ES_PASSWORD", "qmQWhkpwYGY25fFc*-_3"))
 ES_INDEX = os.getenv("ES_INDEX", "my_web_pages")
 
-# Normalize ES_HOST: ensure scheme (http://) and port (:9200) are present
+# Robust ES_HOST parsing: ensure scheme and port; extract credentials from URL if present
 from urllib.parse import urlparse, urlunparse
+import certifi
+
 try:
-    raw_host = ES_HOST
-    # Prepend '//' when scheme is missing so urlparse puts host in netloc
-    parsed = urlparse(raw_host if '://' in raw_host else f'//{raw_host}', scheme='http')
-    scheme = parsed.scheme or 'http'
-    netloc = parsed.netloc or parsed.path
-    # Append default port if none provided
-    if ':' not in netloc:
-        netloc = f"{netloc}:9200"
-    ES_HOST = urlunparse((scheme, netloc, '', '', '', ''))
+    raw = ES_RAW_HOST.strip()
+    # If no scheme, assume https for secure cloud services like Bonsai
+    if not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+
+    parsed = urlparse(raw)
+    scheme = parsed.scheme or "https"
+    username_in_url = parsed.username
+    password_in_url = parsed.password
+    hostname = parsed.hostname or ''
+    port = parsed.port
+
+    # Append default port if missing
+    if port is None:
+        netloc_host = hostname
+        # preserve credentials if present
+        if username_in_url and password_in_url:
+            netloc = f"{username_in_url}:{password_in_url}@{netloc_host}:9200"
+        else:
+            netloc = f"{netloc_host}:9200"
+    else:
+        # rebuild netloc preserving credentials if any
+        if username_in_url and password_in_url:
+            netloc = f"{username_in_url}:{password_in_url}@{hostname}:{port}"
+        else:
+            netloc = f"{hostname}:{port}"
+
+    ES_HOST = urlunparse((scheme, netloc, parsed.path or '', parsed.params or '', parsed.query or '', parsed.fragment or ''))
     print(f"Elasticsearch host set to: {ES_HOST}")
 except Exception as e:
-    print(f"Error parsing ES_HOST ('{ES_HOST}'): {e}")
+    print(f"Error parsing ES_HOST ('{ES_RAW_HOST}'): {e}")
     ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
     print(f"Falling back to ES_HOST={ES_HOST}")
 
-# Initialize Elasticsearch client
-es = Elasticsearch(
-    hosts=[ES_HOST],
-    basic_auth=(ES_USERNAME, ES_PASSWORD),
-    verify_certs=False,
-    ssl_show_warn=False
-)
+# If credentials were embedded in the URL, prefer them over empty env vars
+try:
+    parsed_for_creds = urlparse(ES_HOST)
+    if not ES_USERNAME and parsed_for_creds.username:
+        ES_USERNAME = parsed_for_creds.username
+    if not ES_PASSWORD and parsed_for_creds.password:
+        ES_PASSWORD = parsed_for_creds.password
+except Exception:
+    pass
+
+# Initialize Elasticsearch client with TLS verification (Bonsai requires valid certs)
+es_kwargs = {
+    "hosts": [ES_HOST],
+    "verify_certs": True,
+    "ca_certs": certifi.where(),
+    "ssl_show_warn": False,
+}
+if ES_USERNAME and ES_PASSWORD:
+    es_kwargs["basic_auth"] = (ES_USERNAME, ES_PASSWORD)
+
+es = Elasticsearch(**es_kwargs)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

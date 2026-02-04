@@ -5,3 +5,5 @@ uvicorn
 requests
 PyPDF2
 httpx
+certifi
+python-multipart
