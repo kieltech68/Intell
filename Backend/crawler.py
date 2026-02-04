@@ -29,8 +29,9 @@ ES_HOST = os.getenv("ES_HOST", "https://intell-production.up.railway.app:9200")
 ES_USERNAME = os.getenv("ES_USERNAME")
 ES_PASSWORD = os.getenv("ES_PASSWORD")
 ES_INDEX = os.getenv("ES_INDEX", "my_web_pages")
-# Endpoint to POST indexed documents to (FastAPI running on Railway)
-INDEX_ENDPOINT = os.getenv("INDEX_ENDPOINT", "https://intell-production.up.railway.app/index-page")
+# Endpoint to POST indexed documents to your Render service (indexing API)
+# Default points to your Render app; can be overridden via INDEX_ENDPOINT env var
+INDEX_ENDPOINT = os.getenv("INDEX_ENDPOINT", "https://intell-eq9y.onrender.com/index-page")
 # API key expected by the FastAPI /index-page endpoint (set this in Railway env vars)
 API_KEY = os.getenv("API_KEY")
 
@@ -205,14 +206,38 @@ def crawl_and_index(url, session):
                 
                 try:
                     headers = {"x-api-key": API_KEY} if API_KEY else {}
-                    resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
-                    if resp.status_code in (200, 201):
-                        logger.info(f"[+] Indexed (PDF) via API: {url} -> {resp.status_code}")
+                    # Retry/backoff loop to handle Render free-tier wake-up delays
+                    max_retries = int(os.getenv("POST_MAX_RETRIES", "6"))
+                    base_delay = float(os.getenv("POST_BASE_DELAY", "5"))
+                    max_delay = float(os.getenv("POST_MAX_DELAY", "30"))
+                    attempt = 0
+                    while attempt < max_retries:
+                        try:
+                            resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
+                            if resp.status_code in (200, 201):
+                                logger.info(f"[+] Indexed (PDF) via API: {url} -> {resp.status_code}")
+                                break
+                            # Retry on common transient errors from sleeping hosts
+                            if resp.status_code in (502, 503, 504, 524):
+                                attempt += 1
+                                delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                                logger.warning(f"Retryable status {resp.status_code} from {INDEX_ENDPOINT}, attempt {attempt}/{max_retries}, sleeping {delay}s")
+                                time.sleep(delay)
+                                continue
+                            # Non-retryable HTTP error
+                            logger.error(f"[!] Failed to index (PDF) via API: {url} - {resp.status_code} {resp.text}")
+                            return False, set()
+                        except requests.exceptions.RequestException as re:
+                            attempt += 1
+                            delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                            logger.warning(f"[!] Request error indexing (PDF): {url} - {re} (attempt {attempt}/{max_retries}), sleeping {delay}s")
+                            time.sleep(delay)
+                            continue
                     else:
-                        logger.error(f"[!] Failed to index (PDF) via API: {url} - {resp.status_code} {resp.text}")
+                        logger.error(f"[!] Exceeded retries posting PDF to {INDEX_ENDPOINT}")
                         return False, set()
-                except requests.exceptions.RequestException as re:
-                    logger.warning(f"[!] Request error indexing (PDF): {url} - {re}")
+                except Exception as e:
+                    logger.error(f"[!] Unexpected error preparing PDF post: {e}")
                     return False, set()
                 return True, set()
         
@@ -276,18 +301,36 @@ def crawl_and_index(url, session):
             "timestamp": time.time()
         }
         
-        # Index the document
-        headers = {"x-api-key": API_KEY} if API_KEY else {}
+        # Index the document via POST to the Render API with retries/backoff
         try:
-            resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
-            if resp.status_code in (200, 201):
-                logger.info(f"[+] Indexed via API: {url} -> {resp.status_code}")
+            headers = {"x-api-key": API_KEY} if API_KEY else {}
+            max_retries = int(os.getenv("POST_MAX_RETRIES", "6"))
+            base_delay = float(os.getenv("POST_BASE_DELAY", "5"))
+            max_delay = float(os.getenv("POST_MAX_DELAY", "30"))
+            attempt = 0
+            while attempt < max_retries:
+                try:
+                    resp = session.post(INDEX_ENDPOINT, json=doc, headers=headers, verify=False, timeout=5)
+                    if resp.status_code in (200, 201):
+                        logger.info(f"[+] Indexed via API: {url} -> {resp.status_code}")
+                        break
+                    if resp.status_code in (502, 503, 504, 524):
+                        attempt += 1
+                        delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                        logger.warning(f"Retryable status {resp.status_code} from {INDEX_ENDPOINT}, attempt {attempt}/{max_retries}, sleeping {delay}s")
+                        time.sleep(delay)
+                        continue
+                    logger.error(f"[!] Failed to index via API: {url} - {resp.status_code} {resp.text}")
+                    return False, set()
+                except requests.exceptions.RequestException as re:
+                    attempt += 1
+                    delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                    logger.warning(f"[!] Request error indexing: {url} - {re} (attempt {attempt}/{max_retries}), sleeping {delay}s")
+                    time.sleep(delay)
+                    continue
             else:
-                logger.error(f"[!] Failed to index via API: {url} - {resp.status_code} {resp.text}")
+                logger.error(f"[!] Exceeded retries posting to {INDEX_ENDPOINT}")
                 return False, set()
-        except requests.exceptions.RequestException as re:
-            logger.warning(f"[!] Request error indexing: {url} - {re}")
-            return False, set()
         except Exception as e:
             logger.error(f"[!] Failed to index via API: {url} - {e}")
             return False, set()
