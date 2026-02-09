@@ -475,8 +475,10 @@ def health():
                 "elasticsearch": "disconnected",
             }
     except Exception as e:
+        # If any exception occurs while pinging ES, report disconnected status
         return {
             "status": "unhealthy",
+            "elasticsearch": "disconnected",
             "error": str(e),
         }
 
