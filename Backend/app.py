@@ -80,70 +80,25 @@ def is_safe_content(content: str) -> bool:
     return True
 
 # Elasticsearch connection parameters (read from environment for flexibility)
-# Default to environment-provided host; support Bonsai-style URLs with embedded creds.
-ES_RAW_HOST = os.getenv("ES_HOST", "elasticsearch:9200")
-ES_USERNAME = os.getenv("ELASTIC_USER", os.getenv("ES_USERNAME", "elastic"))
-ES_PASSWORD = os.getenv("ELASTIC_PASSWORD", os.getenv("ES_PASSWORD", "qmQWhkpwYGY25fFc*-_3"))
+# Use Elastic Cloud ID and basic auth credentials
+ELASTIC_CLOUD_ID = os.getenv("ELASTIC_CLOUD_ID")
+ES_USERNAME = os.getenv("ES_USERNAME", "elastic")
+ES_PASSWORD = os.getenv("ES_PASSWORD")
 ES_INDEX = os.getenv("ES_INDEX", "my_web_pages")
 
-# Robust ES_HOST parsing: ensure scheme and port; extract credentials from URL if present
-from urllib.parse import urlparse, urlunparse
 import certifi
 
-try:
-    raw = ES_RAW_HOST.strip()
-    # If no scheme, assume https for secure cloud services like Bonsai
-    if not raw.startswith(("http://", "https://")):
-        raw = "https://" + raw
+# Initialize Elasticsearch client with Elastic Cloud ID and TLS verification
+if not ELASTIC_CLOUD_ID:
+    raise ValueError("ELASTIC_CLOUD_ID environment variable is required")
+if not ES_PASSWORD:
+    raise ValueError("ES_PASSWORD environment variable is required")
 
-    parsed = urlparse(raw)
-    scheme = parsed.scheme or "https"
-    username_in_url = parsed.username
-    password_in_url = parsed.password
-    hostname = parsed.hostname or ''
-    port = parsed.port
-
-    # Append default port if missing
-    if port is None:
-        netloc_host = hostname
-        # preserve credentials if present
-        if username_in_url and password_in_url:
-            netloc = f"{username_in_url}:{password_in_url}@{netloc_host}:9200"
-        else:
-            netloc = f"{netloc_host}:9200"
-    else:
-        # rebuild netloc preserving credentials if any
-        if username_in_url and password_in_url:
-            netloc = f"{username_in_url}:{password_in_url}@{hostname}:{port}"
-        else:
-            netloc = f"{hostname}:{port}"
-
-    ES_HOST = urlunparse((scheme, netloc, parsed.path or '', parsed.params or '', parsed.query or '', parsed.fragment or ''))
-    print(f"Elasticsearch host set to: {ES_HOST}")
-except Exception as e:
-    print(f"Error parsing ES_HOST ('{ES_RAW_HOST}'): {e}")
-    ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
-    print(f"Falling back to ES_HOST={ES_HOST}")
-
-# If credentials were embedded in the URL, prefer them over empty env vars
-try:
-    parsed_for_creds = urlparse(ES_HOST)
-    if not ES_USERNAME and parsed_for_creds.username:
-        ES_USERNAME = parsed_for_creds.username
-    if not ES_PASSWORD and parsed_for_creds.password:
-        ES_PASSWORD = parsed_for_creds.password
-except Exception:
-    pass
-
-# Initialize Elasticsearch client with TLS verification (Bonsai requires valid certs)
 es_kwargs = {
-    "hosts": [ES_HOST],
-    "verify_certs": True,
+    "cloud_id": ELASTIC_CLOUD_ID,
+    "basic_auth": (ES_USERNAME, ES_PASSWORD),
     "ca_certs": certifi.where(),
-    "ssl_show_warn": False,
 }
-if ES_USERNAME and ES_PASSWORD:
-    es_kwargs["basic_auth"] = (ES_USERNAME, ES_PASSWORD)
 
 es = Elasticsearch(**es_kwargs)
 
@@ -153,9 +108,9 @@ async def lifespan(app: FastAPI):
     # Startup
     try:
         if es.ping():
-            print("✓ Connected to Elasticsearch at", ES_HOST)
+            print("✓ Connected to Elasticsearch Cloud")
         else:
-            print("✗ Failed to connect to Elasticsearch")
+            print("✗ Failed to connect to Elasticsearch Cloud")
     except Exception as e:
         print(f"✗ Elasticsearch error: {e}")
     yield
